@@ -4,7 +4,7 @@ description: "Interacting with Coinigy Accounts and Exchange Directly"
 url: https://coinigy.docs.apiary.io
 specificationVersion: '0.20'
 created: '2026-05-28'
-modified: '2026-05-28'
+modified: '2026-05-30'
 x-source: public-apis/public-apis
 x-category: "Cryptocurrency"
 x-tier: 3
@@ -22,6 +22,10 @@ apis:
     properties:
       - type: Documentation
         url: https://coinigy.docs.apiary.io
+      - type: Documentation
+        url: https://api.coinigy.com/api/v2/docs/
+      - type: AsyncAPI
+        url: asyncapi.yml
 common:
   - type: Website
     url: https://coinigy.docs.apiary.io

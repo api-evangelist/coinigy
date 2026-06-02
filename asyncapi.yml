@@ -1,0 +1,351 @@
+asyncapi: '2.6.0'
+info:
+  title: Coinigy CryptoFeed WebSocket API
+  version: '2.0.0'
+  description: >-
+    AsyncAPI 2.6 description of the Coinigy CryptoFeed WebSocket API. Coinigy
+    exposes real-time cryptocurrency market data over a SocketCluster-powered
+    pub/sub WebSocket endpoint. After connecting, clients authenticate by
+    emitting an `auth` event carrying their v1 API key and secret. Clients then
+    subscribe to channels whose names follow the pattern
+    `METHOD-EXCHANGECODE--PRIMARYCURRENCY--SECONDARYCURRENCY` to receive trade
+    streams, order book updates, blockchain alerts, and ticker feeds. Channel
+    inventory and exchange metadata are discoverable through the `channels` and
+    `exchanges` request/response events. The recommended client driver is
+    `socketcluster-client@10`. Coinigy throttles connection attempts to 2 per
+    10 seconds. Only behaviors explicitly described in the public Coinigy
+    documentation, support center channel list, and the `Coinigy/api`
+    repository examples are modelled here; payload field-level schemas are not
+    enumerated where Coinigy has not published them, so messages are typed as
+    open JSON objects.
+  contact:
+    name: Coinigy API
+    url: https://api.coinigy.com/api/v2/docs/
+  license:
+    name: Proprietary - Coinigy
+    url: https://www.coinigy.com/
+  x-source-references:
+    - https://api.coinigy.com/api/v2/docs/
+    - https://coinigy.docs.apiary.io/
+    - https://support.coinigy.com/hc/en-us/articles/360001128313-Coinigy-WebSocket-SocketCluster-Channel-List
+    - https://github.com/Coinigy/api
+    - https://github.com/Coinigy/api/blob/master/ws_example.js
+    - https://github.com/Coinigy/api/blob/master/python_ws_example.py
+    - https://github.com/Coinigy/bittrex-websocket-feed
+    - https://insights.coinigy.com/coinigy-partners-with-socketcluster/
+
+defaultContentType: application/json
+
+servers:
+  production:
+    url: sc-02.coinigy.com:443
+    protocol: wss
+    description: >-
+      Production Coinigy SocketCluster endpoint. The full WebSocket URL is
+      `wss://sc-02.coinigy.com/socketcluster/`. SocketCluster transports a
+      JSON-framed protocol layered on top of WebSocket; clients should use the
+      `socketcluster-client` driver (version 10 recommended) rather than a
+      vanilla WebSocket library. Connection attempts are throttled to 2 per
+      10 seconds.
+
+channels:
+
+  # ----------------------------------------------------------------------
+  # Authentication
+  # ----------------------------------------------------------------------
+  auth:
+    description: >-
+      SocketCluster request/response event used to authenticate a connection
+      with the Coinigy CryptoFeed. The client emits `auth` with its v1 API
+      key and secret and receives an acknowledgement carrying an auth token.
+      Authentication must succeed before any channel subscriptions will
+      deliver data.
+    publish:
+      operationId: sendAuth
+      summary: Send API credentials to authenticate the SocketCluster connection.
+      message:
+        $ref: '#/components/messages/AuthRequest'
+    subscribe:
+      operationId: receiveAuthAck
+      summary: Receive the authentication acknowledgement with token.
+      message:
+        $ref: '#/components/messages/AuthAck'
+
+  # ----------------------------------------------------------------------
+  # Discovery
+  # ----------------------------------------------------------------------
+  exchanges:
+    description: >-
+      Request/response event that returns the full list of exchanges Coinigy
+      currently aggregates. The client emits `exchanges` with a null payload
+      and the server responds with the exchange inventory in the
+      acknowledgement callback.
+    publish:
+      operationId: requestExchanges
+      summary: Request the full exchange list.
+      message:
+        $ref: '#/components/messages/ExchangesRequest'
+    subscribe:
+      operationId: receiveExchanges
+      summary: Receive the exchange list.
+      message:
+        $ref: '#/components/messages/ExchangesResponse'
+
+  channels:
+    description: >-
+      Request/response event that returns the list of available pub/sub
+      channels. Emitting `channels` with no payload returns every channel;
+      emitting `channels` with an exchange code (for example `"OK"`,
+      `"BTRX"`, `"BITF"`) returns only channels for that exchange. The
+      response is delivered in the acknowledgement callback.
+    publish:
+      operationId: requestChannels
+      summary: Request channel inventory, optionally filtered by exchange code.
+      message:
+        $ref: '#/components/messages/ChannelsRequest'
+    subscribe:
+      operationId: receiveChannels
+      summary: Receive the channel inventory.
+      message:
+        $ref: '#/components/messages/ChannelsResponse'
+
+  # ----------------------------------------------------------------------
+  # Market data channels (pub/sub)
+  # ----------------------------------------------------------------------
+  'TRADE-{exchangeCode}--{primaryCurrency}--{secondaryCurrency}':
+    description: >-
+      Live trade stream for a single market on a single exchange. Channel
+      names follow the pattern
+      `TRADE-EXCHANGECODE--PRIMARYCURRENCY--SECONDARYCURRENCY`, for example
+      `TRADE-OK--BTC--CNY`, `TRADE-BITF--BTC--USD`, or
+      `TRADE-BTRX--ETH--BTC`. Each message represents an executed trade on
+      the named market. The full live channel inventory is discoverable via
+      the `channels` event or the Coinigy support center channel list.
+    parameters:
+      exchangeCode:
+        description: >-
+          Coinigy exchange code (for example `OK`, `BTRX`, `BITF`, `BIND`).
+          Use the `exchanges` event to retrieve the authoritative list.
+        schema:
+          type: string
+      primaryCurrency:
+        description: Base currency symbol of the market (for example `BTC`, `ETH`, `LTC`).
+        schema:
+          type: string
+      secondaryCurrency:
+        description: Quote currency symbol of the market (for example `USD`, `USDT`, `BTC`, `CNY`).
+        schema:
+          type: string
+    subscribe:
+      operationId: onTrade
+      summary: Receive an executed trade for the subscribed market.
+      message:
+        $ref: '#/components/messages/TradeEvent'
+
+  'ORDER-{exchangeCode}--{primaryCurrency}--{secondaryCurrency}':
+    description: >-
+      Live order book stream for a single market on a single exchange.
+      Channel names follow the pattern
+      `ORDER-EXCHANGECODE--PRIMARYCURRENCY--SECONDARYCURRENCY`, for example
+      `ORDER-OK--BTC--USD` or `ORDER-BITF--ETH--BTC`. Each message carries
+      an order book update for the named market.
+    parameters:
+      exchangeCode:
+        description: Coinigy exchange code.
+        schema:
+          type: string
+      primaryCurrency:
+        description: Base currency symbol of the market.
+        schema:
+          type: string
+      secondaryCurrency:
+        description: Quote currency symbol of the market.
+        schema:
+          type: string
+    subscribe:
+      operationId: onOrderBook
+      summary: Receive an order book update for the subscribed market.
+      message:
+        $ref: '#/components/messages/OrderBookEvent'
+
+  'BLOCK-{currencyCode}':
+    description: >-
+      Blockchain alert stream for a single cryptocurrency. Channel names
+      follow the pattern `BLOCK-CURRENCYCODE`, for example `BLOCK-LTC`.
+      Messages carry blockchain-level alerts for the named currency.
+    parameters:
+      currencyCode:
+        description: Currency symbol of the blockchain to monitor (for example `BTC`, `LTC`, `ETH`).
+        schema:
+          type: string
+    subscribe:
+      operationId: onBlockAlert
+      summary: Receive a blockchain alert for the subscribed currency.
+      message:
+        $ref: '#/components/messages/BlockEvent'
+
+  TICKER:
+    description: >-
+      Aggregated favorite-markets ticker feed. Subscribing to the `TICKER`
+      channel delivers ticker updates for the account's favorited markets.
+    subscribe:
+      operationId: onTicker
+      summary: Receive a ticker update for a favorited market.
+      message:
+        $ref: '#/components/messages/TickerEvent'
+
+components:
+  messages:
+
+    AuthRequest:
+      name: AuthRequest
+      title: Authentication request
+      summary: API credentials submitted via the SocketCluster `auth` event.
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/AuthCredentials'
+
+    AuthAck:
+      name: AuthAck
+      title: Authentication acknowledgement
+      summary: Acknowledgement returned by the server after `auth`, including a token on success.
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/AuthAckPayload'
+
+    ExchangesRequest:
+      name: ExchangesRequest
+      title: Exchanges request
+      summary: Request the full exchange inventory. Emitted as `exchanges` with a null payload.
+      contentType: application/json
+      payload:
+        type: 'null'
+        description: Coinigy's `exchanges` event is emitted with a null payload.
+
+    ExchangesResponse:
+      name: ExchangesResponse
+      title: Exchanges response
+      summary: Acknowledgement response carrying the exchange list.
+      contentType: application/json
+      payload:
+        type: object
+        description: >-
+          Exchange inventory returned by Coinigy. The exact shape is not
+          publicly documented at the field level; treat it as an open JSON
+          object whose contents include the exchange codes used as the
+          `EXCHANGECODE` token in market channel names.
+        additionalProperties: true
+
+    ChannelsRequest:
+      name: ChannelsRequest
+      title: Channels request
+      summary: >-
+        Request the available channel inventory, optionally filtered to a
+        single exchange code. Emitted as `channels` with either no payload
+        (all channels) or an exchange code string such as `"OK"`.
+      contentType: application/json
+      payload:
+        oneOf:
+          - type: 'null'
+            description: Request the complete channel inventory.
+          - type: string
+            description: Coinigy exchange code to filter the channel inventory by.
+
+    ChannelsResponse:
+      name: ChannelsResponse
+      title: Channels response
+      summary: Acknowledgement response carrying the channel inventory.
+      contentType: application/json
+      payload:
+        type: object
+        description: >-
+          Channel inventory returned by Coinigy. Channel name strings follow
+          the `METHOD-EXCHANGECODE--PRIMARYCURRENCY--SECONDARYCURRENCY`
+          format. The detailed response object shape is not publicly
+          documented at the field level.
+        additionalProperties: true
+
+    TradeEvent:
+      name: TradeEvent
+      title: Trade event
+      summary: A single executed trade on the subscribed market.
+      contentType: application/json
+      payload:
+        type: object
+        description: >-
+          JSON payload describing an executed trade. Coinigy documents the
+          channel naming and behavior but does not publish a field-level
+          schema for trade payloads, so the message is modelled here as an
+          open object.
+        additionalProperties: true
+
+    OrderBookEvent:
+      name: OrderBookEvent
+      title: Order book event
+      summary: An order book update for the subscribed market.
+      contentType: application/json
+      payload:
+        type: object
+        description: >-
+          JSON payload describing an order book update. Coinigy documents
+          the channel naming and behavior but does not publish a
+          field-level schema for order book payloads, so the message is
+          modelled here as an open object.
+        additionalProperties: true
+
+    BlockEvent:
+      name: BlockEvent
+      title: Blockchain alert event
+      summary: A blockchain-level alert for the subscribed currency.
+      contentType: application/json
+      payload:
+        type: object
+        description: >-
+          JSON payload describing a blockchain alert. Coinigy documents the
+          `BLOCK-CURRENCYCODE` channel naming but does not publish a
+          field-level schema for the payload.
+        additionalProperties: true
+
+    TickerEvent:
+      name: TickerEvent
+      title: Ticker event
+      summary: A ticker update for a favorited market.
+      contentType: application/json
+      payload:
+        type: object
+        description: >-
+          JSON payload describing a ticker update. Coinigy documents the
+          `TICKER` channel but does not publish a field-level schema for
+          the payload.
+        additionalProperties: true
+
+  schemas:
+
+    AuthCredentials:
+      type: object
+      description: Coinigy v1 API credentials submitted with the `auth` event.
+      required:
+        - apiKey
+        - apiSecret
+      properties:
+        apiKey:
+          type: string
+          description: Coinigy v1 API key.
+        apiSecret:
+          type: string
+          description: Coinigy v1 API secret.
+
+    AuthAckPayload:
+      type: object
+      description: >-
+        Acknowledgement payload returned by Coinigy in the `auth` callback.
+        On success the payload includes an auth token; on failure it carries
+        an error object. The full shape is not publicly documented at the
+        field level, so additional properties are permitted.
+      properties:
+        token:
+          type: string
+          description: Authentication token issued on successful authentication.
+        err:
+          description: Error object returned when authentication fails.
+      additionalProperties: true
