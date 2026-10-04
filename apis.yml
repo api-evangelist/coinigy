@@ -39,7 +39,6 @@ apis:
   - name: Coinigy
     description: "Interacting with Coinigy Accounts and Exchange Directly"
     humanURL: https://coinigy.docs.apiary.io
-    baseURL: https://coinigy.docs.apiary.io
     tags:
       - Cryptocurrency
     properties:
